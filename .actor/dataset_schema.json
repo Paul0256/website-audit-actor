@@ -8,6 +8,7 @@
           "name",
           "siteName",
           "domain",
+          "error",
           "opportunityScore",
           "opportunities",
           "pitchAngle",
@@ -24,8 +25,7 @@
           "cms",
           "copyrightYear",
           "url",
-          "ok",
-          "error"
+          "ok"
         ]
       },
       "display": {

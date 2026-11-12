@@ -205,6 +205,7 @@ async def audit_site(client: httpx.AsyncClient, raw_url: str, max_pages: int = 4
         "url": final_url,
         "domain": host.removeprefix("www."),
         "ok": True,
+        "error": "",
         "pagesRead": len(pages),
         "https": final_url.startswith("https://"),
         **merge(pages),
