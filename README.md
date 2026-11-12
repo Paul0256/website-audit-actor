@@ -37,9 +37,13 @@ Or paste any list of websites (with or without `https://`).
 
 - Reads the homepage and up to 3 key pages it links to: contact, FAQ, pricing/insurance,
   booking, about (set *Pages per website*, 1–8).
+- Also reads the site's structured data (schema.org), where many sites keep the exact
+  business name, email, phone, address and social profiles for Google.
 - Plain HTTP requests, no browser: fast and cheap. Chat and booking widgets are detected
   from the scripts and links in the page.
-- Unreachable sites are listed with the reason and are **not charged**.
+- Unreachable or blocking sites are listed with the reason ("Blocked by the website
+  (HTTP 403)", "Timed out"…) and are **not charged**. Sites that block automated visits
+  are respected, not worked around.
 
 ## Pricing
 

@@ -4,21 +4,72 @@
     "overview": {
       "title": "Leads",
       "transformation": {
-        "fields": ["name", "domain", "opportunityScore", "opportunities", "pitchAngle", "emails", "phones",
-                   "hasLiveChat", "chatVendors", "hasOnlineBooking", "bookingVendors", "hasFaq", "hasContactForm",
-                   "https", "mobileFriendly", "cms", "copyrightYear", "url", "ok", "error"]
+        "fields": [
+          "name",
+          "siteName",
+          "domain",
+          "opportunityScore",
+          "opportunities",
+          "pitchAngle",
+          "emails",
+          "phones",
+          "hasLiveChat",
+          "chatVendors",
+          "hasOnlineBooking",
+          "bookingVendors",
+          "hasFaq",
+          "hasContactForm",
+          "https",
+          "mobileFriendly",
+          "cms",
+          "copyrightYear",
+          "url",
+          "ok",
+          "error"
+        ]
       },
       "display": {
         "component": "table",
         "properties": {
-          "opportunityScore": { "label": "Score", "format": "number" },
-          "opportunities": { "label": "What's missing", "format": "array" },
-          "pitchAngle": { "label": "Pitch angle", "format": "text" },
-          "hasLiveChat": { "label": "Chat", "format": "boolean" },
-          "hasOnlineBooking": { "label": "Booking", "format": "boolean" },
-          "hasFaq": { "label": "FAQ", "format": "boolean" },
-          "hasContactForm": { "label": "Form", "format": "boolean" },
-          "url": { "format": "link" }
+          "opportunityScore": {
+            "label": "Score",
+            "format": "number"
+          },
+          "opportunities": {
+            "label": "What's missing",
+            "format": "array"
+          },
+          "pitchAngle": {
+            "label": "Pitch angle",
+            "format": "text"
+          },
+          "hasLiveChat": {
+            "label": "Chat",
+            "format": "boolean"
+          },
+          "hasOnlineBooking": {
+            "label": "Booking",
+            "format": "boolean"
+          },
+          "hasFaq": {
+            "label": "FAQ",
+            "format": "boolean"
+          },
+          "hasContactForm": {
+            "label": "Form",
+            "format": "boolean"
+          },
+          "url": {
+            "format": "link"
+          },
+          "siteName": {
+            "label": "Name on site",
+            "format": "text"
+          },
+          "error": {
+            "label": "Error",
+            "format": "text"
+          }
         }
       }
     }

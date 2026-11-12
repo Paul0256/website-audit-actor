@@ -32,22 +32,46 @@ def normalize_url(raw: str) -> str | None:
     return raw if parsed.path else raw + "/"
 
 
-async def fetch(client: httpx.AsyncClient, url: str) -> tuple[str, str] | None:
-    """Final URL and HTML, or None when the page is not HTML or not reachable."""
+class FetchError(Exception):
+    pass
+
+
+async def fetch(client: httpx.AsyncClient, url: str) -> tuple[str, str]:
+    """Final URL and HTML. Raises FetchError with a short reason a person can act on."""
     try:
         resp = await client.get(url)
-    except httpx.HTTPError:
-        return None
-    if resp.status_code >= 400 or "html" not in resp.headers.get("content-type", "html"):
-        return None
+    except httpx.TimeoutException as exc:
+        raise FetchError("Timed out") from exc
+    except httpx.ConnectError as exc:
+        raise FetchError("Could not connect (domain down or does not exist)") from exc
+    except httpx.HTTPError as exc:
+        raise FetchError(f"Request failed ({type(exc).__name__})") from exc
+    if resp.status_code in (401, 403, 429):
+        raise FetchError(f"Blocked by the website (HTTP {resp.status_code})")
+    if resp.status_code >= 400:
+        raise FetchError(f"HTTP {resp.status_code}")
+    if "html" not in resp.headers.get("content-type", "html"):
+        raise FetchError("Not an HTML page")
     return str(resp.url), resp.text[:MAX_HTML]
 
 
-async def fetch_home(client: httpx.AsyncClient, url: str) -> tuple[str, str] | None:
-    got = await fetch(client, url)
-    if got is None and url.startswith("https://"):
-        got = await fetch(client, "http://" + url[len("https://") :])
-    return got
+async def fetch_optional(client: httpx.AsyncClient, url: str) -> tuple[str, str] | None:
+    try:
+        return await fetch(client, url)
+    except FetchError:
+        return None
+
+
+async def fetch_home(client: httpx.AsyncClient, url: str) -> tuple[str, str]:
+    try:
+        return await fetch(client, url)
+    except FetchError as first:
+        if not url.startswith("https://") or str(first).startswith("Blocked"):
+            raise
+        try:
+            return await fetch(client, "http://" + url[len("https://") :])
+        except FetchError:
+            raise first from None
 
 
 def merge(pages: list[PageSignals]) -> dict:
@@ -62,8 +86,12 @@ def merge(pages: list[PageSignals]) -> dict:
             socials.setdefault(k, v)
     found = {hint: (home.links.get(hint) or [None])[0] for hint in ("contact", "faq", "pricing", "booking")}
     years = [p.copyright_year for p in pages if p.copyright_year]
+    names = [p.business_name for p in pages if p.business_name]
+    addresses = [p.address for p in pages if p.address]
     return {
         "title": home.title,
+        "siteName": names[0] if names else "",
+        "siteAddress": addresses[0] if addresses else "",
         "description": home.description,
         "emails": union("emails")[:10],
         "phones": union("phones")[:5],
@@ -146,7 +174,7 @@ def opportunities(r: dict, now_year: int) -> tuple[list[str], int, str]:
     score = min(100, sum(g[0] for g in gaps))
     pitch = ""
     if gaps:
-        name = r.get("name") or business_name(r.get("title") or "", r["domain"]) or r["domain"]
+        name = r.get("name") or r.get("siteName") or business_name(r.get("title") or "", r["domain"]) or r["domain"]
         pitch = f"{name}: {gaps[0][2]}."
     return [g[1] for g in gaps], score, pitch
 
@@ -156,11 +184,11 @@ async def audit_site(client: httpx.AsyncClient, raw_url: str, max_pages: int = 4
     base = {"inputUrl": raw_url, **(extra or {})}
     if url is None:
         return {**base, "domain": raw_url, "ok": False, "error": "Not a website address"}
-    home = await fetch_home(client, url)
-    if home is None:
+    try:
+        final_url, html = await fetch_home(client, url)
+    except FetchError as exc:
         host = (urlparse(url).hostname or "").removeprefix("www.")
-        return {**base, "url": url, "domain": host, "ok": False, "error": "Website did not respond with a page"}
-    final_url, html = home
+        return {**base, "url": url, "domain": host, "ok": False, "error": str(exc)}
     pages = [analyze(final_url, html)]
 
     to_visit: list[str] = []
@@ -168,7 +196,7 @@ async def audit_site(client: httpx.AsyncClient, raw_url: str, max_pages: int = 4
         for link in pages[0].links.get(hint, [])[:1]:
             if link not in to_visit and link.rstrip("/") != final_url.rstrip("/"):
                 to_visit.append(link)
-    results = await asyncio.gather(*(fetch(client, u) for u in to_visit[: max(0, max_pages - 1)]))
+    results = await asyncio.gather(*(fetch_optional(client, u) for u in to_visit[: max(0, max_pages - 1)]))
     pages += [analyze(u, h) for u, h in (r for r in results if r)]
 
     host = urlparse(final_url).hostname or ""

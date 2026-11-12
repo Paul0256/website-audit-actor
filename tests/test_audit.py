@@ -93,7 +93,7 @@ async def test_unreachable_site_is_reported_not_raised():
         "url": "https://gone.example/",
         "domain": "gone.example",
         "ok": False,
-        "error": "Website did not respond with a page",
+        "error": "HTTP 404",
     }
 
 
@@ -132,3 +132,26 @@ def test_hidden_and_obfuscated_emails():
     )
     s = analyze("https://x.com/", html)
     assert s.emails == {"office@bench.co", "frontdesk@smile-co.com"}
+
+
+def test_structured_data_gives_name_email_phone_socials():
+    html = """<html><head><title>Dentist in Boise, ID | Boise Bench Dentistry</title>
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"x"},
+    {"@type":["Dentist","LocalBusiness"],"name":"Boise Bench Dentistry","email":"office@boisebenchdentistry.com",
+     "telephone":"+1-208-555-0100","sameAs":["https://www.facebook.com/boisebench"],
+     "address":{"@type":"PostalAddress","streetAddress":"1 Main St","addressLocality":"Boise","addressRegion":"ID"}}]}
+    </script></head><body></body></html>"""
+    s = analyze("https://www.boisebenchdentistry.com/", html)
+    assert s.business_name == "Boise Bench Dentistry"
+    assert s.emails == {"office@boisebenchdentistry.com"} and s.phones == {"(208) 555-0100"}
+    assert s.socials["facebook"] == "https://www.facebook.com/boisebench"
+    assert s.address == "1 Main St, Boise, ID"
+
+
+async def test_blocked_site_says_so():
+    def handler(request):
+        return httpx.Response(403, text="no", headers={"content-type": "text/html"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        r = await audit_site(client, "idahofamilydental.com")
+    assert r["ok"] is False and r["error"] == "Blocked by the website (HTTP 403)"

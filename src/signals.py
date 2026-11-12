@@ -5,6 +5,7 @@ Pure functions over HTML, so they are easy to test and need no network.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
@@ -84,6 +85,8 @@ CMS = {
     "GoDaddy": ("img1.wsimg.com",),
     "Weebly": ("weebly.com",),
     "Duda": ("multiscreensite.com", "dudaone.com"),
+    "Framer": ("framerusercontent.com",),
+    "ProSites": ("prosites.com",),
 }
 
 ANALYTICS = {
@@ -155,6 +158,8 @@ class PageSignals:
     viewport: bool = False
     copyright_year: int | None = None
     links: dict[str, list[str]] = field(default_factory=dict)  # hint -> internal URLs
+    business_name: str = ""  # from schema.org structured data, the most reliable name
+    address: str = ""
 
 
 def normalize_phone(raw: str) -> str:
@@ -198,6 +203,63 @@ def hidden_emails(soup: BeautifulSoup, text: str) -> set[str]:
         domain = re.sub(r"\s*[\[(]\s*dot\s*[\])]\s*", ".", rest, flags=re.IGNORECASE)
         found.add(f"{user}@{domain}")
     return {e.lower() for e in found if EMAIL.fullmatch(e or "") and not EMAIL_JUNK.search(e)}
+
+
+BUSINESS_TYPES = re.compile(
+    r"business|dentist|medical|clinic|physician|organization|store|restaurant|"
+    r"service|office|practice|salon|spa|attorney|legal|contractor|agent",
+    re.IGNORECASE,
+)
+
+
+def _walk(node):
+    if isinstance(node, list):
+        for x in node:
+            yield from _walk(x)
+    elif isinstance(node, dict):
+        yield node
+        for key in ("@graph", "mainEntity", "publisher", "provider", "organizer"):
+            if key in node:
+                yield from _walk(node[key])
+
+
+def structured_data(soup: BeautifulSoup) -> list[dict]:
+    """schema.org entities from JSON-LD blocks that describe a business."""
+    found = []
+    for tag in soup.find_all("script", attrs={"type": re.compile("ld\\+json", re.IGNORECASE)}):
+        try:
+            data = json.loads(tag.string or "")
+        except (ValueError, TypeError):
+            continue
+        for node in _walk(data):
+            kinds = node.get("@type")
+            kinds = " ".join(kinds) if isinstance(kinds, list) else str(kinds or "")
+            if BUSINESS_TYPES.search(kinds):
+                found.append(node)
+    return found
+
+
+def apply_structured_data(s: PageSignals, soup: BeautifulSoup) -> None:
+    for node in structured_data(soup):
+        name = node.get("name")
+        if isinstance(name, str) and name.strip() and not s.business_name:
+            s.business_name = name.strip()[:150]
+        for key in ("email",):
+            email = str(node.get(key) or "").lower().removeprefix("mailto:").strip()
+            if EMAIL.fullmatch(email) and not EMAIL_JUNK.search(email):
+                s.emails.add(email)
+        phone = node.get("telephone")
+        if isinstance(phone, str) and re.search(r"\d{3}", phone):
+            s.phones.add(normalize_phone(phone))
+        same_as = node.get("sameAs") or []
+        for link in same_as if isinstance(same_as, list) else [same_as]:
+            for social, pattern in SOCIAL.items():
+                if social not in s.socials and isinstance(link, str) and re.search(pattern, link, re.IGNORECASE):
+                    s.socials[social] = link.split("?")[0]
+        addr = node.get("address")
+        if isinstance(addr, dict) and not s.address:
+            parts = [addr.get(k) for k in ("streetAddress", "addressLocality", "addressRegion", "postalCode")]
+            s.address = ", ".join(str(x).strip() for x in parts if x)
 
 
 def analyze(url: str, html: str) -> PageSignals:
@@ -264,6 +326,11 @@ def analyze(url: str, html: str) -> PageSignals:
         if not EMAIL_JUNK.search(email):
             s.emails.add(email)
     s.emails |= hidden_emails(soup, text)
+    apply_structured_data(s, soup)
+    if not s.business_name:
+        og = soup.find("meta", attrs={"property": "og:site_name"})
+        if og and og.get("content", "").strip():
+            s.business_name = og["content"].strip()[:150]
     if not s.phones:
         for match in US_PHONE.findall(text)[:3]:
             s.phones.add(normalize_phone(match))
