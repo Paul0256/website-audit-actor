@@ -18,7 +18,10 @@
       "title": "Or: Google Maps Scraper dataset ID",
       "type": "string",
       "description": "Audit every business with a website from a Google Maps Scraper run. The business name, address, category and rating are kept in the output.",
-      "editor": "textfield"
+      "resourceType": "dataset",
+      "resourcePermissions": [
+        "READ"
+      ]
     },
     "maxSites": {
       "title": "Max websites",
