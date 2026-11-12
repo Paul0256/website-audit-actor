@@ -80,6 +80,7 @@ async def test_full_audit_reads_key_pages_and_scores_gaps():
     assert r["hasContactForm"] and r["hasFaq"] and not r["hasLiveChat"] and not r["hasOnlineBooking"]
     assert r["opportunities"][:2] == ["No live chat or AI assistant", "No online booking"]
     assert "Footer copyright is from 2019" in r["opportunities"]
+    assert "No contact form" not in r["opportunities"]
     assert r["pitchAngle"].startswith("Bright Smile Dental: visitors with a question after hours")
     assert r["opportunityScore"] == 50
 
@@ -90,6 +91,7 @@ async def test_unreachable_site_is_reported_not_raised():
     assert r == {
         "inputUrl": "https://gone.example",
         "url": "https://gone.example/",
+        "domain": "gone.example",
         "ok": False,
         "error": "Website did not respond with a page",
     }
@@ -112,4 +114,21 @@ def test_complete_site_has_nothing_to_pitch():
 
 def test_business_name_from_title():
     assert business_name("Bright Smile Dental | Family Dentist in Boise") == "Bright Smile Dental"
-    assert business_name("Home - Riverside Physio") == "Home"
+    assert business_name("Home - Riverside Physio") == "Riverside Physio"
+    assert business_name("Home | Hidden Springs Dental", "hiddenspringsdental.com") == "Hidden Springs Dental"
+    assert business_name("Dentist in Boise, ID | Ustick Dental Office", "ustickdental.com") == "Ustick Dental Office"
+    assert business_name("Boise Bench Dentistry - Dentist in Boise, ID", "boisebenchdentistry.com") == (
+        "Boise Bench Dentistry"
+    )
+
+
+def test_hidden_and_obfuscated_emails():
+    from src.signals import analyze
+
+    html = (
+        '<a href="/cdn-cgi/l/email-protection#4f202929262c2a0f2d2a212c27612c20">[email protected]</a>'
+        '<span class="__cf_email__" data-cfemail="4f202929262c2a0f2d2a212c27612c20">x</span>'
+        "<p>Write to frontdesk [at] smile-co [dot] com</p>"
+    )
+    s = analyze("https://x.com/", html)
+    assert s.emails == {"office@bench.co", "frontdesk@smile-co.com"}

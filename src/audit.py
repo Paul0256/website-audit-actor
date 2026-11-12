@@ -4,6 +4,7 @@ and say what the business is missing (chat, booking, FAQ, form...) as sales oppo
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
@@ -87,12 +88,31 @@ def merge(pages: list[PageSignals]) -> dict:
     }
 
 
-def business_name(title: str) -> str:
-    """'Bright Smile Dental | Family Dentist in Boise' -> 'Bright Smile Dental'."""
-    for sep in (" | ", " – ", " — ", " - ", " :: ", " · "):
-        if sep in title:
-            title = title.split(sep)[0]
-    return title.strip()
+GENERIC_TITLE = re.compile(r"^(home|homepage|welcome|index|main)$", re.IGNORECASE)
+
+
+def business_name(title: str, domain: str = "") -> str:
+    """The part of the page title that names the business.
+
+    'Home | Hidden Springs Dental' -> 'Hidden Springs Dental'; with the domain, the part that
+    looks most like it wins: 'Dentist in Boise, ID | Ustick Dental Office' + ustickdental.com
+    -> 'Ustick Dental Office'.
+    """
+    parts = [p.strip() for p in re.split(r"\s+(?:\||–|—|-|::|·)\s+", title) if p.strip()]
+    parts = [p for p in parts if not GENERIC_TITLE.match(p)] or parts
+    if not parts:
+        return ""
+    site = re.sub(r"[^a-z0-9]", "", domain.split(".")[0].lower())
+    if site:
+
+        def overlap(part: str) -> int:
+            words = re.findall(r"[a-z0-9]+", part.lower())
+            return sum(len(w) for w in words if len(w) > 2 and w in site)
+
+        best = max(parts, key=overlap)
+        if overlap(best) > 0:
+            return best
+    return parts[0]
 
 
 def opportunities(r: dict, now_year: int) -> tuple[list[str], int, str]:
@@ -110,7 +130,9 @@ def opportunities(r: dict, now_year: int) -> tuple[list[str], int, str]:
         gaps.append((20, "No online booking", "customers can't book without calling during opening hours"))
     if not r["hasFaq"]:
         gaps.append((15, "No FAQ page", "common questions about prices and process still land on the phone"))
-    if not r["hasContactForm"]:
+    # Many forms are drawn by JavaScript, which plain requests don't run: a contact page
+    # without a visible form is not proof that there is no form.
+    if not r["hasContactForm"] and not r["contactPageUrl"]:
         gaps.append((15, "No contact form", "there's no simple way to send a question from the website"))
     if not r["https"]:
         gaps.append((10, "Not served over HTTPS", "browsers mark the site as 'Not secure'"))
@@ -124,7 +146,7 @@ def opportunities(r: dict, now_year: int) -> tuple[list[str], int, str]:
     score = min(100, sum(g[0] for g in gaps))
     pitch = ""
     if gaps:
-        name = r.get("name") or business_name(r.get("title") or "") or r["domain"]
+        name = r.get("name") or business_name(r.get("title") or "", r["domain"]) or r["domain"]
         pitch = f"{name}: {gaps[0][2]}."
     return [g[1] for g in gaps], score, pitch
 
@@ -133,10 +155,11 @@ async def audit_site(client: httpx.AsyncClient, raw_url: str, max_pages: int = 4
     url = normalize_url(raw_url)
     base = {"inputUrl": raw_url, **(extra or {})}
     if url is None:
-        return {**base, "ok": False, "error": "Not a website address"}
+        return {**base, "domain": raw_url, "ok": False, "error": "Not a website address"}
     home = await fetch_home(client, url)
     if home is None:
-        return {**base, "url": url, "ok": False, "error": "Website did not respond with a page"}
+        host = (urlparse(url).hostname or "").removeprefix("www.")
+        return {**base, "url": url, "domain": host, "ok": False, "error": "Website did not respond with a page"}
     final_url, html = home
     pages = [analyze(final_url, html)]
 

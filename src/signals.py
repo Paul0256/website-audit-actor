@@ -171,6 +171,35 @@ def same_site(url: str, base_host: str) -> bool:
     return host.removeprefix("www.") == base_host.removeprefix("www.")
 
 
+OBFUSCATED_EMAIL = re.compile(
+    r"([a-z0-9._%+\-]+)\s*[\[(]\s*at\s*[\])]\s*([a-z0-9\-]+(?:\s*[\[(]\s*dot\s*[\])]\s*[a-z0-9\-]+)+)", re.IGNORECASE
+)
+
+
+def decode_cloudflare_email(hex_string: str) -> str | None:
+    """Cloudflare's "email protection" stores addresses XOR-ed with the first byte."""
+    try:
+        data = bytes.fromhex(hex_string)
+    except ValueError:
+        return None
+    if len(data) < 2:
+        return None
+    return bytes(b ^ data[0] for b in data[1:]).decode("utf-8", "ignore")
+
+
+def hidden_emails(soup: BeautifulSoup, text: str) -> set[str]:
+    found: set[str] = set()
+    for tag in soup.select("[data-cfemail]"):
+        found.add(decode_cloudflare_email(tag["data-cfemail"]) or "")
+    for a in soup.find_all("a", href=True):
+        if "/cdn-cgi/l/email-protection#" in a["href"]:
+            found.add(decode_cloudflare_email(a["href"].split("#", 1)[1]) or "")
+    for user, rest in OBFUSCATED_EMAIL.findall(text):
+        domain = re.sub(r"\s*[\[(]\s*dot\s*[\])]\s*", ".", rest, flags=re.IGNORECASE)
+        found.add(f"{user}@{domain}")
+    return {e.lower() for e in found if EMAIL.fullmatch(e or "") and not EMAIL_JUNK.search(e)}
+
+
 def analyze(url: str, html: str) -> PageSignals:
     s = PageSignals(url=url)
     soup = BeautifulSoup(html, "html.parser")
@@ -234,6 +263,7 @@ def analyze(url: str, html: str) -> PageSignals:
         email = match.lower().strip(".")
         if not EMAIL_JUNK.search(email):
             s.emails.add(email)
+    s.emails |= hidden_emails(soup, text)
     if not s.phones:
         for match in US_PHONE.findall(text)[:3]:
             s.phones.add(normalize_phone(match))
