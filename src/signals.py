@@ -47,6 +47,7 @@ BOOKING_VENDORS = {
     "Acuity": ("acuityscheduling.com",),
     "Square Appointments": ("squareup.com/appointments", "square.site/book"),
     "Zocdoc": ("zocdoc.com",),
+    "Oryx": ("myoryx.com",),
     "NexHealth": ("nexhealth.com",),
     "LocalMed": ("localmed.com",),
     "Opencare": ("opencare.com",),
@@ -100,7 +101,7 @@ SOCIAL = {
     "facebook": r"facebook\.com/(?!sharer|share\.php|dialog|plugins|tr\b|tr\?)[\w.\-/%]+",
     "instagram": r"instagram\.com/(?!p/|explore)[\w.\-]+",
     "linkedin": r"linkedin\.com/(company|in)/[\w.\-%]+",
-    "x": r"(?:twitter|x)\.com/(?!intent|share|home)[\w]+",
+    "x": r"(?<![\w-])(?:twitter|x)\.com/(?!intent|share|home)[\w]+",
     "youtube": r"youtube\.com/(channel/|c/|@|user/)[\w.\-]+",
     "tiktok": r"tiktok\.com/@[\w.\-]+",
     "yelp": r"yelp\.com/biz/[\w\-]+",
@@ -306,7 +307,7 @@ def analyze(url: str, html: str) -> PageSignals:
                 s.emails.add(email)
             continue
         if low_href.startswith("tel:"):
-            s.phones.add(normalize_phone(href[4:]))
+            s.phones.add(normalize_phone(unquote(href[4:])))
             continue
         absolute = urljoin(url, href)
         for name, pattern in SOCIAL.items():

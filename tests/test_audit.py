@@ -160,3 +160,14 @@ async def test_blocked_site_says_so():
 def test_mailto_with_encoded_space():
     html = '<html><body><a href="mailto:%20office@goulet.example">Email us</a></body></html>'
     assert analyze("https://goulet.example/", html).emails == {"office@goulet.example"}
+
+
+def test_oryx_booking_link_is_booking_not_x_profile():
+    html = (
+        '<html><body><a href="https://mychart.myoryx.com/online-schedule/index.html">Book</a>'
+        '<a href="tel:%20253-999-5503">Call</a><a href="https://x.com/clinic">X</a></body></html>'
+    )
+    s = analyze("https://clinic.example/", html)
+    assert "Oryx" in s.booking_vendors
+    assert s.socials.get("x") == "https://x.com/clinic"
+    assert s.phones == {"(253) 999-5503"}
