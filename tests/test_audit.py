@@ -80,7 +80,7 @@ async def test_full_audit_reads_key_pages_and_scores_gaps():
     assert r["hasContactForm"] and r["hasFaq"] and not r["hasLiveChat"] and not r["hasOnlineBooking"]
     assert r["opportunities"][:2] == ["No live chat or AI assistant", "No online booking"]
     assert "Footer copyright is from 2019" in r["opportunities"]
-    assert "No contact form" not in r["opportunities"]
+    assert "No contact form found" not in r["opportunities"]
     assert r["pitchAngle"].startswith("Bright Smile Dental: visitors with a question after hours")
     assert r["opportunityScore"] == 50
 

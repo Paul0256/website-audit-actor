@@ -161,7 +161,7 @@ def opportunities(r: dict, now_year: int) -> tuple[list[str], int, str]:
     # Many forms are drawn by JavaScript, which plain requests don't run: a contact page
     # without a visible form is not proof that there is no form.
     if not r["hasContactForm"] and not r["contactPageUrl"]:
-        gaps.append((15, "No contact form", "there's no simple way to send a question from the website"))
+        gaps.append((15, "No contact form found", "there's no simple way to send a question from the website"))
     if not r["https"]:
         gaps.append((10, "Not served over HTTPS", "browsers mark the site as 'Not secure'"))
     if not r["mobileFriendly"]:
