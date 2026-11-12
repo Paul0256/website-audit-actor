@@ -8,7 +8,11 @@
       "type": "array",
       "description": "Business websites to audit, e.g. https://www.example-dental.com. Domains without https:// work too.",
       "editor": "requestListSources",
-      "prefill": [{ "url": "https://apify.com" }]
+      "prefill": [
+        {
+          "url": "https://apify.com"
+        }
+      ]
     },
     "datasetId": {
       "title": "Or: Google Maps Scraper dataset ID",
@@ -36,14 +40,17 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 30,
-      "default": 10
+      "default": 10,
+      "description": "How many websites are audited at the same time. Lower it if many sites time out."
     },
     "proxyConfiguration": {
       "title": "Proxy",
       "type": "object",
       "description": "Usually not needed: business websites rarely block audits.",
       "editor": "proxy",
-      "default": { "useApifyProxy": false }
+      "default": {
+        "useApifyProxy": false
+      }
     }
   }
 }
