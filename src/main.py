@@ -9,6 +9,12 @@ from apify import Actor
 from .audit import audit_site, make_client
 
 CHARGE_EVENT = "site-audited"
+
+
+class InputError(Exception):
+    pass
+
+
 # Fields kept from a Google Maps Scraper dataset, so the output stays one row per business.
 MAPS_FIELDS = {
     "title": "name",
@@ -29,11 +35,14 @@ async def collect_targets(actor_input: dict) -> list[tuple[str, dict]]:
             targets.append((url, {}))
     dataset_id = (actor_input.get("datasetId") or "").strip()
     if dataset_id:
-        dataset = await Actor.open_dataset(id=dataset_id)
-        async for item in dataset.iterate_items():
-            site = item.get("website")
-            if site:
-                targets.append((site, {new: item.get(old) for old, new in MAPS_FIELDS.items() if item.get(old)}))
+        try:
+            dataset = await Actor.open_dataset(id=dataset_id)
+            async for item in dataset.iterate_items():
+                site = item.get("website")
+                if site:
+                    targets.append((site, {new: item.get(old) for old, new in MAPS_FIELDS.items() if item.get(old)}))
+        except Exception as exc:  # wrong ID or no access: say so instead of a stack trace
+            raise InputError(f"Could not read dataset {dataset_id}: {exc}") from exc
     seen: set[str] = set()
     unique = []
     for url, extra in targets:
@@ -48,7 +57,11 @@ async def collect_targets(actor_input: dict) -> list[tuple[str, dict]]:
 async def main() -> None:
     async with Actor:
         actor_input = await Actor.get_input() or {}
-        targets = await collect_targets(actor_input)
+        try:
+            targets = await collect_targets(actor_input)
+        except InputError as exc:
+            await Actor.fail(status_message=str(exc))
+            return
         if not targets:
             await Actor.fail(status_message="Add websites or a Google Maps dataset ID.")
             return
