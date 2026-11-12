@@ -1,0 +1,12 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Website audit results",
+  "properties": {
+    "overview": {
+      "type": "string",
+      "title": "Leads",
+      "description": "One row per website: contacts, what the site is missing, opportunity score and pitch angle.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items?view=overview"
+    }
+  }
+}
