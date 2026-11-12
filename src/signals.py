@@ -1,0 +1,240 @@
+"""What a page reveals about a business: contacts, chat, booking, forms, FAQ, pricing, tech.
+
+Pure functions over HTML, so they are easy to test and need no network.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from urllib.parse import urljoin, urlparse
+
+from bs4 import BeautifulSoup
+
+# Script, iframe or link fragments that identify a live chat or AI assistant vendor.
+CHAT_VENDORS = {
+    "Intercom": ("widget.intercom.io", "js.intercomcdn.com"),
+    "Drift": ("js.driftt.com", "drift.com/include"),
+    "Tawk.to": ("embed.tawk.to",),
+    "LiveChat": ("cdn.livechatinc.com",),
+    "Zendesk": ("static.zdassets.com", "zopim.com"),
+    "Crisp": ("client.crisp.chat",),
+    "Tidio": ("code.tidio.co",),
+    "HubSpot Chat": ("js.usemessages.com", "hubspot-messages-iframe"),
+    "Olark": ("static.olark.com",),
+    "Freshchat": ("wchat.freshchat.com", "freshworks.com/live-chat"),
+    "Facebook Messenger": ("customerchat", "xfbml.customerchat"),
+    "Podium": ("connect.podium.com", "podium.com/widget"),
+    "Birdeye": ("birdeye.com/embed",),
+    "Weave": ("getweave.com", "weavehelp"),
+    "Zoho SalesIQ": ("salesiq.zoho",),
+    "JivoChat": ("code.jivosite.com", "jivochat"),
+    "Chatbase": ("chatbase.co/embed",),
+    "Voiceflow": ("cdn.voiceflow.com",),
+    "Botpress": ("cdn.botpress.cloud",),
+    "Userlike": ("userlike-cdn-widgets",),
+    "Chaport": ("app.chaport.com",),
+    "Gorgias": ("config.gorgias.chat",),
+    "Kommunicate": ("widget.kommunicate.io",),
+    "LiveAgent": ("ladesk.com",),
+    "Smith.ai": ("smith.ai/chat",),
+    "ManyChat": ("widget.manychat.com",),
+}
+
+BOOKING_VENDORS = {
+    "Calendly": ("calendly.com",),
+    "Acuity": ("acuityscheduling.com",),
+    "Square Appointments": ("squareup.com/appointments", "square.site/book"),
+    "Zocdoc": ("zocdoc.com",),
+    "NexHealth": ("nexhealth.com",),
+    "LocalMed": ("localmed.com",),
+    "Opencare": ("opencare.com",),
+    "Setmore": ("setmore.com",),
+    "SimplyBook": ("simplybook.me",),
+    "Booksy": ("booksy.com",),
+    "Vagaro": ("vagaro.com",),
+    "Mindbody": ("mindbodyonline.com", "mindbody.io"),
+    "Jane": ("janeapp.com", ".jane.app"),
+    "Fresha": ("fresha.com",),
+    "Schedulicity": ("schedulicity.com",),
+    "Appointy": ("appointy.com",),
+    "YouCanBookMe": ("youcanbook.me",),
+    "Cal.com": ("cal.com/",),
+    "Doctible": ("doctible.com",),
+    "Flexbook": ("flexbook.me",),
+    "Weave Online Scheduling": ("book.getweave.com",),
+}
+
+FORM_VENDORS = {
+    "Typeform": ("typeform.com",),
+    "Jotform": ("jotform.com",),
+    "HubSpot Forms": ("js.hsforms.net", "hsforms.com"),
+    "Gravity Forms": ("gform_wrapper", "gravityforms"),
+    "WPForms": ("wpforms",),
+    "Contact Form 7": ("wpcf7",),
+    "Google Forms": ("docs.google.com/forms",),
+}
+
+CMS = {
+    "WordPress": ("wp-content/", "wp-includes/"),
+    "Wix": ("static.wixstatic.com", "wix.com"),
+    "Squarespace": ("static1.squarespace.com", "squarespace.com"),
+    "Shopify": ("cdn.shopify.com",),
+    "Webflow": ("webflow.com", "website-files.com"),
+    "GoDaddy": ("img1.wsimg.com",),
+    "Weebly": ("weebly.com",),
+    "Duda": ("multiscreensite.com", "dudaone.com"),
+}
+
+ANALYTICS = {
+    "Google Analytics": ("googletagmanager.com/gtag/js", "google-analytics.com"),
+    "Google Tag Manager": ("googletagmanager.com/gtm.js",),
+    "Meta Pixel": ("connect.facebook.net/en_us/fbevents.js", "fbevents.js"),
+    "Hotjar": ("static.hotjar.com",),
+}
+
+SOCIAL = {
+    "facebook": r"facebook\.com/(?!sharer|share\.php|dialog|plugins|tr\b|tr\?)[\w.\-/%]+",
+    "instagram": r"instagram\.com/(?!p/|explore)[\w.\-]+",
+    "linkedin": r"linkedin\.com/(company|in)/[\w.\-%]+",
+    "x": r"(?:twitter|x)\.com/(?!intent|share|home)[\w]+",
+    "youtube": r"youtube\.com/(channel/|c/|@|user/)[\w.\-]+",
+    "tiktok": r"tiktok\.com/@[\w.\-]+",
+    "yelp": r"yelp\.com/biz/[\w\-]+",
+}
+
+EMAIL = re.compile(r"[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}", re.IGNORECASE)
+# Addresses that are never a business's own contact (tracking, placeholders, image names).
+EMAIL_JUNK = re.compile(
+    r"(\.(png|jpe?g|gif|svg|webp)$|sentry|wixpress|example\.(com|org)|domain\.com|email\.com|yourdomain|"
+    r"@2x|godaddy\.com|squarespace\.com|wordpress\.(com|org)|noreply|no-reply)",
+    re.IGNORECASE,
+)
+US_PHONE = re.compile(r"(?<!\d)(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}(?!\d)")
+COPYRIGHT_YEAR = re.compile(r"(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?(\d{4})", re.IGNORECASE)
+
+# Words in link text or URLs that point at pages worth reading.
+PAGE_HINTS = {
+    "contact": ("contact", "reach-us", "get-in-touch", "location"),
+    "faq": ("faq", "frequently-asked", "questions"),
+    "pricing": ("pricing", "prices", "fees", "rates", "cost", "insurance", "financing", "payment"),
+    "booking": ("book", "appointment", "schedule", "request"),
+    "about": ("about", "team", "our-practice", "meet"),
+}
+BOOKING_TEXT = re.compile(
+    r"\b(book (an |your )?(appointment|online|now|a visit)|request (an )?appointment|schedule (an |your )?(appointment|visit|now|online))\b",
+    re.IGNORECASE,
+)
+FAQ_TEXT = re.compile(r"\b(faq|frequently asked questions)\b", re.IGNORECASE)
+
+
+def _has(haystack: str, needles: tuple[str, ...]) -> bool:
+    return any(n in haystack for n in needles)
+
+
+def vendors(haystack: str, table: dict[str, tuple[str, ...]]) -> list[str]:
+    return sorted(name for name, needles in table.items() if _has(haystack, needles))
+
+
+@dataclass
+class PageSignals:
+    url: str
+    title: str = ""
+    description: str = ""
+    emails: set[str] = field(default_factory=set)
+    phones: set[str] = field(default_factory=set)
+    socials: dict[str, str] = field(default_factory=dict)
+    chat_vendors: set[str] = field(default_factory=set)
+    booking_vendors: set[str] = field(default_factory=set)
+    booking_cta: bool = False
+    form_vendors: set[str] = field(default_factory=set)
+    has_form: bool = False
+    faq: bool = False
+    cms: set[str] = field(default_factory=set)
+    analytics: set[str] = field(default_factory=set)
+    viewport: bool = False
+    copyright_year: int | None = None
+    links: dict[str, list[str]] = field(default_factory=dict)  # hint -> internal URLs
+
+
+def normalize_phone(raw: str) -> str:
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    return raw.strip()
+
+
+def same_site(url: str, base_host: str) -> bool:
+    host = urlparse(url).hostname or ""
+    return host.removeprefix("www.") == base_host.removeprefix("www.")
+
+
+def analyze(url: str, html: str) -> PageSignals:
+    s = PageSignals(url=url)
+    soup = BeautifulSoup(html, "html.parser")
+    low = html.lower()
+
+    if soup.title and soup.title.string:
+        s.title = soup.title.string.strip()[:200]
+    meta = soup.find("meta", attrs={"name": re.compile("^description$", re.IGNORECASE)})
+    if meta and meta.get("content"):
+        s.description = meta["content"].strip()[:300]
+    s.viewport = soup.find("meta", attrs={"name": re.compile("^viewport$", re.IGNORECASE)}) is not None
+
+    s.chat_vendors = set(vendors(low, CHAT_VENDORS))
+    s.booking_vendors = set(vendors(low, BOOKING_VENDORS))
+    s.form_vendors = set(vendors(low, FORM_VENDORS))
+    s.cms = set(vendors(low, CMS))
+    s.analytics = set(vendors(low, ANALYTICS))
+
+    for form in soup.find_all("form"):
+        fields = " ".join(
+            (i.get("type") or "") + " " + (i.get("name") or "") for i in form.find_all(["input", "textarea"])
+        ).lower()
+        if form.find("textarea") or "email" in fields:
+            s.has_form = True
+            break
+    s.has_form = s.has_form or bool(s.form_vendors)
+
+    text = soup.get_text(" ", strip=True)
+    s.booking_cta = bool(BOOKING_TEXT.search(text))
+    s.faq = bool(FAQ_TEXT.search(text)) and ("?" in text)
+
+    years = [int(y) for y in COPYRIGHT_YEAR.findall(text) if 1995 <= int(y) <= 2100]
+    s.copyright_year = max(years) if years else None
+
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        low_href = href.lower()
+        if low_href.startswith("mailto:"):
+            email = low_href[7:].split("?")[0].strip()
+            if EMAIL.fullmatch(email) and not EMAIL_JUNK.search(email):
+                s.emails.add(email)
+            continue
+        if low_href.startswith("tel:"):
+            s.phones.add(normalize_phone(href[4:]))
+            continue
+        absolute = urljoin(url, href)
+        for name, pattern in SOCIAL.items():
+            if name not in s.socials and re.search(pattern, absolute, re.IGNORECASE):
+                s.socials[name] = absolute.split("?")[0]
+        if not same_site(absolute, urlparse(url).hostname or ""):
+            continue
+        label = (a.get_text(" ", strip=True) + " " + low_href).lower()
+        for hint, words in PAGE_HINTS.items():
+            if any(w in label for w in words):
+                s.links.setdefault(hint, [])
+                clean = absolute.split("#")[0]
+                if clean not in s.links[hint]:
+                    s.links[hint].append(clean)
+
+    for match in EMAIL.findall(text):
+        email = match.lower().strip(".")
+        if not EMAIL_JUNK.search(email):
+            s.emails.add(email)
+    if not s.phones:
+        for match in US_PHONE.findall(text)[:3]:
+            s.phones.add(normalize_phone(match))
+    return s

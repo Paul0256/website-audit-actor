@@ -1,0 +1,49 @@
+{
+  "title": "Website audit input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "websites": {
+      "title": "Websites",
+      "type": "array",
+      "description": "Business websites to audit, e.g. https://www.example-dental.com. Domains without https:// work too.",
+      "editor": "requestListSources",
+      "prefill": [{ "url": "https://apify.com" }]
+    },
+    "datasetId": {
+      "title": "Or: Google Maps Scraper dataset ID",
+      "type": "string",
+      "description": "Audit every business with a website from a Google Maps Scraper run. The business name, address, category and rating are kept in the output.",
+      "editor": "textfield"
+    },
+    "maxSites": {
+      "title": "Max websites",
+      "type": "integer",
+      "description": "Stop after this many websites (0 = no limit).",
+      "minimum": 0,
+      "default": 0
+    },
+    "maxPagesPerSite": {
+      "title": "Pages per website",
+      "type": "integer",
+      "description": "The homepage plus the contact, FAQ, pricing, booking and about pages it links to. More pages find more emails but take longer.",
+      "minimum": 1,
+      "maximum": 8,
+      "default": 4
+    },
+    "maxConcurrency": {
+      "title": "Websites in parallel",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30,
+      "default": 10
+    },
+    "proxyConfiguration": {
+      "title": "Proxy",
+      "type": "object",
+      "description": "Usually not needed: business websites rarely block audits.",
+      "editor": "proxy",
+      "default": { "useApifyProxy": false }
+    }
+  }
+}

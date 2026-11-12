@@ -1,0 +1,16 @@
+{
+  "actorSpecification": 1,
+  "name": "website-audit-contacts",
+  "title": "Local Business Website Audit & Contacts",
+  "description": "Audit any list of business websites: emails, phones and socials, plus what each site is missing (live chat, online booking, FAQ, contact form, HTTPS, mobile) with a ready pitch angle for every lead.",
+  "version": "1.0",
+  "buildTag": "latest",
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  },
+  "dockerfile": "../Dockerfile",
+  "readme": "../README.md",
+  "minMemoryMbytes": 256,
+  "maxMemoryMbytes": 2048
+}
