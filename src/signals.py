@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -300,7 +300,8 @@ def analyze(url: str, html: str) -> PageSignals:
         href = a["href"].strip()
         low_href = href.lower()
         if low_href.startswith("mailto:"):
-            email = low_href[7:].split("?")[0].strip()
+            # Links like "mailto:%20office@..." carry encoded spaces.
+            email = unquote(low_href[7:].split("?")[0]).strip()
             if EMAIL.fullmatch(email) and not EMAIL_JUNK.search(email):
                 s.emails.add(email)
             continue

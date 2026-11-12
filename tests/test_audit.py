@@ -155,3 +155,8 @@ async def test_blocked_site_says_so():
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         r = await audit_site(client, "idahofamilydental.com")
     assert r["ok"] is False and r["error"] == "Blocked by the website (HTTP 403)"
+
+
+def test_mailto_with_encoded_space():
+    html = '<html><body><a href="mailto:%20office@goulet.example">Email us</a></body></html>'
+    assert analyze("https://goulet.example/", html).emails == {"office@goulet.example"}
